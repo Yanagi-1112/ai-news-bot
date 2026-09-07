@@ -1,0 +1,16 @@
+services:
+  newsbot:
+    build: .
+    env_file: .env
+    volumes:
+      - newsbot-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /data/heartbeat && test $(( $$(date +%s) - $$(stat -c %Y /data/heartbeat) )) -lt 2700"]
+      interval: 5m
+      timeout: 10s
+      retries: 3
+      start_period: 10m
+
+volumes:
+  newsbot-data:

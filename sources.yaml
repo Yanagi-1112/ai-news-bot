@@ -1,0 +1,74 @@
+sources:
+  - id: openai-news
+    name: OpenAI News
+    type: rss
+    url: https://openai.com/news/rss.xml
+    category: official
+    terms_url: https://openai.com/policies/terms-of-use/
+    checked_date: 2026-09-07
+  - id: google-ai
+    name: Google AI Blog
+    type: rss
+    url: https://blog.google/technology/ai/rss/
+    category: official
+    terms_url: https://policies.google.com/terms
+    checked_date: 2026-09-07
+  - id: anthropic-news
+    name: Anthropic News
+    type: html_list
+    url: https://www.anthropic.com/news
+    selector: 'a[href*="/news/"]'
+    category: official
+    terms_url: https://www.anthropic.com/legal/consumer-terms
+    checked_date: 2026-09-07
+  - id: google-deepmind
+    name: Google DeepMind Blog
+    type: html_list
+    url: https://deepmind.google/blog/
+    selector: 'a[href*="/blog/"]'
+    category: official
+    terms_url: https://policies.google.com/terms
+    checked_date: 2026-09-07
+  - id: meta-ai
+    name: Meta AI Blog
+    type: html_list
+    url: https://ai.meta.com/blog/
+    selector: 'a[href*="/blog/"]'
+    category: official
+    terms_url: https://www.facebook.com/legal/terms
+    checked_date: 2026-09-07
+  - id: xai-news
+    name: xAI News
+    type: html_list
+    url: https://x.ai/news
+    selector: 'a[href*="/news/"]'
+    category: official
+    terms_url: https://x.ai/legal/terms-of-service
+    checked_date: 2026-09-07
+  - id: mistral-news
+    name: Mistral News
+    type: html_list
+    url: https://mistral.ai/news/
+    selector: 'a[href*="/news/"]'
+    category: official
+    terms_url: https://mistral.ai/terms/
+    checked_date: 2026-09-07
+  - id: hn-algolia
+    name: Hacker News Algolia
+    type: hn_algolia
+    url: https://hn.algolia.com/api/v1/search_by_date
+    category: community
+    terms_url: https://hn.algolia.com/api
+    checked_date: 2026-09-07
+    queries: [AI, LLM, Claude, GPT, Gemini]
+    min_points: 30
+  - id: hf-models
+    name: Hugging Face Models
+    type: hf_models
+    # クエリはcollector側でparamsとして付与するため、URLは素のエンドポイントにする
+    url: https://huggingface.co/api/models
+    category: community
+    terms_url: https://huggingface.co/terms-of-service
+    checked_date: 2026-09-07
+    min_likes: 5
+    min_downloads: 100
