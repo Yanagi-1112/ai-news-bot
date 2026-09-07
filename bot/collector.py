@@ -42,8 +42,8 @@ class Collector:
             response = self.client.get(url, params=params, headers=headers, timeout=TIMEOUT)
             if response.status_code != 429:
                 if response.status_code != 304:
+                    response.raise_for_status()
                     self.store.save_source_headers(source["id"], response.headers.get("etag"), response.headers.get("last-modified"))
-                response.raise_for_status()
                 return response
             retry = response.headers.get("Retry-After")
             try:
