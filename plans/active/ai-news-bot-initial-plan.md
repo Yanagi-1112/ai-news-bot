@@ -103,11 +103,11 @@ KAGOYAクラウドVPSへデプロイする分業。クローン後は対話式�
 - A6. やなぎさんに報告し、運用詳細（LLM・時刻・フォーマット・フック）を受け取る
 
 ### フェーズB: ベース実装（運用詳細確定後・codex-implement委譲）
-- B1. collector + sources.yaml（リサーチ結果で確定した情報源台帳）
-- B2. curator（curation.mdプロンプト・schema検証）+ poster（Webhook・allowed_mentions・状態管理）
-- B3. setup.sh + manage.sh + Docker Compose（healthcheck・named volume）+ DEPLOY.md + AGENTS.md
-- B4. pytest（合格基準1の全ケース）
+- B1〜B4. ✅ 2026-09-07完了（codex terra/high一発。Fableフルレビューで5点修正:
+  dry-run空出力バグ・ダイジェスト48h鮮度窓・類似判定の直近500件制限・RSS bozo緩和・ConnectError時の再送化。
+  html_listセレクタ5サイトは実ページで検証済み。pytest 24件パス・ライブdry-run成功）
 - B5. E2E検証（テストWebhook実配信）→ README仕上げ（デモ画像）→ リリースtag `v0.1.0`
+  **← 残作業。やなぎさんのテスト用Webhook URL待ち**
 
 ### フェーズC: 運用開始
 - うしくんさんがKAGOYAへtag指定デプロイ → 本番Webhookに切替 → 数日運用して選定基準チューニング
