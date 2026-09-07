@@ -190,3 +190,24 @@ def test_existing_database_migrates_without_changing_articles(tmp_path):
     assert store.get_article(key)['curation_attempts'] == 0
     assert store.digest_sent('2026-09-07')
     store.close()
+
+
+@pytest.mark.parametrize('published,should_reference', [
+    ('Thu, 05 Mar 2026 10:00:00 GMT', False),
+    ('2026-09-07T22:00:00Z', True),
+])
+def test_digest_reference_checks_publication_date_without_rewriting_sent_history(tmp_path, published, should_reference):
+    store = Store()
+    previous = article(store, 'earlier-alert', score=95, breaking=True, published=published, state='sent')
+    store.increment_breaking('2026-09-08')
+    store.mark_breaking_article('2026-09-08', previous)
+    article(store, 'fresh-digest-candidate', score=80)
+    calls = []
+    app = runtime(store, tmp_path, lambda req: calls.append(req) or httpx.Response(200, json={'id':'digest'}))
+    app.tick(NOW)
+    assert len(calls) == 1
+    content = json.loads(calls[0].content)['content']
+    assert ('earlier-alert' in content) == should_reference
+    assert 'fresh-digest-candidate' in content
+    assert store.get_article(previous)['state'] == 'sent'
+    assert store.breaking_article('2026-09-08')['id'] == previous

@@ -24,25 +24,30 @@ class NewsScheduler:
         self.store, self.collector, self.curator, self.poster = store, collector, curator, poster
         self.settings, self.sources = settings, sources
 
+    @staticmethod
+    def _is_fresh(article: dict, now: datetime) -> bool:
+        """送信履歴を変更せず、候補と既送信の再掲に同じ鮮度基準を適用。"""
+        stamp = None
+        for value in (article.get("published_at"), article.get("first_seen_at")):
+            if not value:
+                continue
+            for parse in (datetime.fromisoformat, parsedate_to_datetime):
+                try:
+                    stamp = parse(value)
+                    if stamp.tzinfo is None:
+                        stamp = stamp.replace(tzinfo=timezone.utc)
+                    break
+                except (ValueError, TypeError, OverflowError):
+                    continue
+            if stamp is not None:
+                break
+        return stamp is None or stamp >= now - timedelta(hours=48)
+
     def _fresh(self, articles: list[dict], now: datetime) -> list[dict]:
         """公開日を優先し、日付不明の情報源は初回取得日で鮮度を判定する。"""
         fresh = []
         for article in articles:
-            stamp = None
-            for value in (article.get("published_at"), article.get("first_seen_at")):
-                if not value:
-                    continue
-                for parse in (datetime.fromisoformat, parsedate_to_datetime):
-                    try:
-                        stamp = parse(value)
-                        if stamp.tzinfo is None:
-                            stamp = stamp.replace(tzinfo=timezone.utc)
-                        break
-                    except (ValueError, TypeError, OverflowError):
-                        continue
-                if stamp is not None:
-                    break
-            if stamp is not None and stamp < now - timedelta(hours=48):
+            if not self._is_fresh(article, now):
                 self.store.update_article(article["id"], state="skipped")
             else:
                 fresh.append(article)
@@ -89,6 +94,8 @@ class NewsScheduler:
         candidates.sort(key=lambda a: (a["score"] or 0), reverse=True)
         if now.hour >= self.settings.post_hour_jst and not self.store.digest_sent(date_jst) and candidates:
             breaking = self.store.breaking_article(date_jst)
+            if breaking and not self._is_fresh(breaking, now):
+                breaking = None
             content = build_digest(candidates, now.date(), breaking)
             outputs.append(content)
             if not dry_run and self._deliver(date_jst, "digest", candidates[:5], lambda: self.poster.send_digest(candidates[:5], now.date(), breaking)):
