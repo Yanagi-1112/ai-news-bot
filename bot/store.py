@@ -27,7 +27,9 @@ class Store:
     def __init__(self, path: str | Path = ":memory:") -> None:
         if str(path) != ":memory:":
             Path(path).parent.mkdir(parents=True, exist_ok=True)
-        self.conn = sqlite3.connect(path)
+        # 起動時tickの完了後、APSchedulerのworkerへ引き継ぐ。
+        # schedulerはmax_instances=1でtickを直列実行するため同時利用しない。
+        self.conn = sqlite3.connect(path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self._create_schema()
 

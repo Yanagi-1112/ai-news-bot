@@ -82,6 +82,6 @@ class NewsScheduler:
 
     def serve(self) -> None:
         scheduler = BlockingScheduler(timezone=JST)
-        scheduler.add_job(self.tick, "interval", minutes=30, max_instances=1, coalesce=True, misfire_grace_time=600)
+        scheduler.add_job(self.tick, "cron", minute="0,30", second=0, max_instances=1, coalesce=True, misfire_grace_time=600)
         self.tick()  # 起動直後にも1回実行し、初回既読化と停止復帰を早める。
         scheduler.start()
