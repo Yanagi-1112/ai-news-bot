@@ -42,10 +42,21 @@ def build_digest(articles: Iterable[dict[str, Any]], day: date, breaking: dict[s
 
 
 class Poster:
-    def __init__(self, store: Store, webhook_url: str, client: httpx.Client | None = None) -> None:
+    def __init__(self, store: Store, webhook_url: str, client: httpx.Client | None = None,
+                 username: str | None = None, avatar_url: str | None = None) -> None:
         self.store, self.webhook_url = store, webhook_url
+        # Webhook既定の名前・アイコンをメッセージ単位で上書きする（未指定なら既定のまま）。
+        self.username, self.avatar_url = username, avatar_url
         self.client = client or httpx.Client(timeout=15.0)
         self._owns_client = client is None
+
+    def _payload(self, content: str) -> dict[str, Any]:
+        payload: dict[str, Any] = {"content": content, "allowed_mentions": {"parse": []}}
+        if self.username:
+            payload["username"] = self.username
+        if self.avatar_url:
+            payload["avatar_url"] = self.avatar_url
+        return payload
 
     def close(self) -> None:
         if self._owns_client:
@@ -56,7 +67,7 @@ class Poster:
         for article_id in article_ids:
             self.store.update_article(article_id, state="uncertain")
         try:
-            response = self.client.post(self.webhook_url + "?wait=true", json={"content": content, "allowed_mentions": {"parse": []}}, timeout=15.0)
+            response = self.client.post(self.webhook_url + "?wait=true", json=self._payload(content), timeout=15.0)
         except httpx.ConnectError:
             # 接続自体に失敗＝リクエストは届いていないので、再送候補に戻して安全。
             for article_id in article_ids:
@@ -93,7 +104,7 @@ class Poster:
     def send_test(self) -> bool:
         """通常記事の状態には触れない固定疎通メッセージ。"""
         try:
-            response = self.client.post(self.webhook_url + "?wait=true", json={"content": "[TEST] ai-news-bot からの接続テストです。", "allowed_mentions": {"parse": []}}, timeout=15.0)
+            response = self.client.post(self.webhook_url + "?wait=true", json=self._payload("[TEST] 接続テストです。この名前とアイコンで配信されます。"), timeout=15.0)
             return 200 <= response.status_code < 300
         except httpx.RequestError:
             return False

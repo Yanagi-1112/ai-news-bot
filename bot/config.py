@@ -26,6 +26,10 @@ class Settings:
     post_hour_jst: int = 8
     breaking_threshold: int = 90
     data_dir: Path = Path("/data")
+    # Discord上の表示名とアイコン。Webhook既定値をメッセージ単位で上書きするので、
+    # うしくんさん側でWebhookをどう作っても見た目が揃う。名前替えは.envの1行でできる。
+    bot_display_name: str = "未来に先回りする新聞"
+    bot_avatar_url: str = "https://raw.githubusercontent.com/Yanagi-1112/ai-news-bot/main/docs/icon.png"
 
 
 def mask_secret(value: str) -> str:
@@ -53,6 +57,8 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
         post_hour_jst=hour,
         breaking_threshold=threshold,
         data_dir=Path(os.getenv("DATA_DIR", "/data")),
+        bot_display_name=os.getenv("BOT_DISPLAY_NAME", Settings.bot_display_name),
+        bot_avatar_url=os.getenv("BOT_AVATAR_URL", Settings.bot_avatar_url),
     )
 
 

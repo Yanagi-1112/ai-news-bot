@@ -56,3 +56,29 @@ def test_digest_format_mentions_and_length():
     assert poster.send_digest([top], __import__("datetime").date.today())
     import json
     assert json.loads(seen[0].content)["allowed_mentions"] == {"parse": []}
+
+
+def test_payload_includes_display_name_and_avatar():
+    """表示名とアイコンURLを指定した場合、全投稿のpayloadに含まれる。"""
+    import json as _json
+    from bot.store import Store as _Store
+
+    seen = []
+
+    def handler(request):
+        seen.append(_json.loads(request.content))
+        return httpx.Response(200, json={"id": "m1"})
+
+    store = _Store()
+    article_id = store.add_article({"url": "https://example.com/x", "title": "x",
+                                    "source_id": "s", "source_category": "official"})
+    store.update_article(article_id, state="scored", score=95, headline_ja="見出し", summary_ja="概要")
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    poster = Poster(store, "https://discord.example/webhook", client,
+                    username="未来に先回りする新聞", avatar_url="https://example.com/icon.png")
+    assert poster.send_breaking(store.get_article(article_id))
+    assert poster.send_test()
+    for payload in seen:
+        assert payload["username"] == "未来に先回りする新聞"
+        assert payload["avatar_url"] == "https://example.com/icon.png"
+        assert payload["allowed_mentions"] == {"parse": []}
