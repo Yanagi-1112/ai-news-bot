@@ -30,6 +30,7 @@ class Settings:
     # うしくんさん側でWebhookをどう作っても見た目が揃う。名前替えは.envの1行でできる。
     bot_display_name: str = "未来に先回りする新聞"
     bot_avatar_url: str = "https://raw.githubusercontent.com/Yanagi-1112/ai-news-bot/main/docs/icon.png"
+    digest_min_score: int = 60
 
 
 def mask_secret(value: str) -> str:
@@ -47,8 +48,9 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
     try:
         hour = int(os.getenv("POST_HOUR_JST", "8"))
         threshold = int(os.getenv("BREAKING_THRESHOLD", "90"))
+        digest_min_score = int(os.getenv("DIGEST_MIN_SCORE", "60"))
     except ValueError as exc:
-        raise ValueError("POST_HOUR_JST と BREAKING_THRESHOLD は整数で指定してください") from exc
+        raise ValueError("POST_HOUR_JST / BREAKING_THRESHOLD / DIGEST_MIN_SCORE は整数で指定してください") from exc
     return Settings(
         discord_webhook_url=os.getenv("DISCORD_WEBHOOK_URL", ""),
         llm_base_url=os.getenv("LLM_BASE_URL", ""),
@@ -59,6 +61,7 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
         data_dir=Path(os.getenv("DATA_DIR", "/data")),
         bot_display_name=os.getenv("BOT_DISPLAY_NAME", Settings.bot_display_name),
         bot_avatar_url=os.getenv("BOT_AVATAR_URL", Settings.bot_avatar_url),
+        digest_min_score=digest_min_score,
     )
 
 
@@ -96,6 +99,8 @@ def validate_config() -> list[str]:
         errors.append("POST_HOUR_JST は 0〜23 にしてください")
     if not 0 <= settings.breaking_threshold <= 100:
         errors.append("BREAKING_THRESHOLD は 0〜100 にしてください")
+    if not 0 <= settings.digest_min_score <= 100:
+        errors.append("DIGEST_MIN_SCORE は 0〜100 にしてください")
     try:
         load_sources()
     except (OSError, ValueError, yaml.YAMLError) as exc:

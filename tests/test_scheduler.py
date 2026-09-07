@@ -40,7 +40,7 @@ def runtime(store, poster, hour=8):
 
 def add_scored(store, title, score, category="official"):
     article_id = store.add_article({"url": f"https://example.com/{title}", "title": title, "source_id": "s", "source_category": category})
-    store.update_article(article_id, state="scored", score=score, headline_ja=title, summary_ja="概要")
+    store.update_article(article_id, state="scored", score=score, breaking=int(score >= 90), headline_ja=title, summary_ja="概要")
     return article_id
 
 

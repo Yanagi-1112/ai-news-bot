@@ -29,7 +29,7 @@ def make_settings(tmp_path: Path, *, hour: int = 8) -> Settings:
 def add_scored(store: Store, url: str, score: int = 80, title: str = "Model Release") -> int:
     article_id = store.add_article(item(url, title))
     assert article_id is not None
-    store.update_article(article_id, state="scored", score=score, headline_ja="日本語見出し", summary_ja="短い要約", score_reason="理由")
+    store.update_article(article_id, state="scored", score=score, breaking=int(score >= 90), headline_ja="日本語見出し", summary_ja="短い要約", score_reason="理由")
     return article_id
 
 
@@ -109,16 +109,16 @@ def test_broken_rss_does_not_stop_other_source() -> None:
     assert len(result) == 1 and result[0]["title"] == "Good Release"
 
 
-def test_invalid_llm_json_is_skipped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_invalid_llm_json_is_retryable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     store = Store()
     article_id = store.add_article(item("https://example.com/a"))
     curator = Curator(store, make_settings(tmp_path))
     monkeypatch.setattr(curator, "_request", lambda batch: (_ for _ in ()).throw(ValueError("bad json")))
     curator.curate([store.get_article(article_id)])
-    assert store.get_article(article_id)["state"] == "skipped"
+    assert store.get_article(article_id)["state"] == "new"
 
 
-def test_invalid_llm_schema_skips_only_the_bad_article(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_invalid_llm_schema_retries_only_the_bad_article(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     store = Store()
     first = store.add_article(item("https://example.com/a"))
     second = store.add_article(item("https://example.com/b", "Second Release"))
@@ -127,7 +127,7 @@ def test_invalid_llm_schema_skips_only_the_bad_article(tmp_path: Path, monkeypat
     monkeypatch.setattr(curator, "_request", lambda batch: [valid, {"score": 101}])
     curator.curate([store.get_article(first), store.get_article(second)])
     assert store.get_article(first)["state"] == "scored"
-    assert store.get_article(second)["state"] == "skipped"
+    assert store.get_article(second)["state"] == "new"
 
 
 def test_first_collection_marks_existing_as_skipped(tmp_path: Path) -> None:

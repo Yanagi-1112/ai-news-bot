@@ -23,22 +23,31 @@ def build_breaking(article: dict[str, Any]) -> str:
     return f"🚨 速報\n{_line(article, preview=True)}"[:MAX_DISCORD_LENGTH]
 
 
-def build_digest(articles: Iterable[dict[str, Any]], day: date, breaking: dict[str, Any] | None = None) -> str:
+def _digest(articles: Iterable[dict[str, Any]], day: date, breaking: dict[str, Any] | None = None) -> tuple[str, list[int]]:
     """トップはプレビューを出し、次点は抑止する。長い場合は次点から削る。"""
     items = list(articles)[:5]
     if not items:
-        return ""
+        return "", []
     parts = [f"📰 AIニュース {day.isoformat()}", _line(items[0], preview=True)]
+    if len("\n".join(parts)) > MAX_DISCORD_LENGTH:
+        # URL途中で切れた投稿を送信済みとしない。次の収まる記事を先頭にする。
+        return _digest(items[1:], day, breaking)
+    included = [items[0]["id"]]
     for article in items[1:]:
         candidate = "\n".join(parts + [_line(article, preview=False)])
         if len(candidate) > MAX_DISCORD_LENGTH:
             break
         parts.append(_line(article, preview=False))
+        included.append(article["id"])
     if breaking:
         breaking_line = f"本日の速報: {breaking.get('headline_ja') or breaking['title']} <{breaking['url']}>"
         if len("\n".join(parts + [breaking_line])) <= MAX_DISCORD_LENGTH:
             parts.append(breaking_line)
-    return "\n".join(parts)[:MAX_DISCORD_LENGTH]
+    return "\n".join(parts), included
+
+
+def build_digest(articles: Iterable[dict[str, Any]], day: date, breaking: dict[str, Any] | None = None) -> str:
+    return _digest(articles, day, breaking)[0]
 
 
 class Poster:
@@ -99,7 +108,8 @@ class Poster:
     def send_digest(self, articles: list[dict[str, Any]], day: date, breaking: dict[str, Any] | None = None) -> bool:
         if not articles:
             return False
-        return self._send(build_digest(articles, day, breaking), [article["id"] for article in articles])
+        content, included = _digest(articles, day, breaking)
+        return self._send(content, included) if included else False
 
     def send_test(self) -> bool:
         """通常記事の状態には触れない固定疎通メッセージ。"""

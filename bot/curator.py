@@ -5,6 +5,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from openai import OpenAI
 from pydantic import BaseModel, Field, ValidationError
@@ -47,10 +48,16 @@ class Curator:
     def _request(self, batch: list[dict[str, Any]]) -> list[Any]:
         if self.settings.llm_api_key == "stub":
             return [self._stub(article) for article in batch]
-        client = self.client or OpenAI(api_key=self.settings.llm_api_key, base_url=self.settings.llm_base_url)
+        client = self.client or OpenAI(api_key=self.settings.llm_api_key, base_url=self.settings.llm_base_url, timeout=60.0, max_retries=0)
+        # 日次の短いJSON採点では思考モードを不要とし、空の最終応答を減らす。
+        options = {"extra_body": {"thinking": {"type": "disabled"}}} if urlsplit(self.settings.llm_base_url).hostname == "api.deepseek.com" else {}
         payload = [{"id": a["id"], "title": a["title"], "summary": a.get("summary", ""), "source": a["source_id"]} for a in batch]
-        response = client.chat.completions.create(model=self.settings.llm_model, temperature=0, response_format={"type": "json_object"},
-            messages=[{"role": "system", "content": self.prompt}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}])
+        try:
+            response = client.chat.completions.create(model=self.settings.llm_model, temperature=0, response_format={"type": "json_object"},
+                messages=[{"role": "system", "content": self.prompt}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False)}], **options)
+        finally:
+            if self.client is None:
+                client.close()
         content = response.choices[0].message.content or ""
         parsed = json.loads(content)
         results = parsed.get("articles", parsed) if isinstance(parsed, dict) else parsed
@@ -69,16 +76,18 @@ class Curator:
                     try:
                         result = CurationResult.model_validate(raw_result)
                     except ValidationError:
-                        LOG.warning("LLM出力のschemaが不正な候補をスキップしました")
-                        self.store.update_article(article["id"], state="skipped")
+                        LOG.warning("LLM出力のschemaが不正です（最大3巡回まで再試行）")
+                        self.store.curation_failed(article["id"])
                         continue
                     self.store.update_article(article["id"], state="scored", score=result.score, breaking=int(result.breaking),
                         headline_ja=truncate(result.headline_ja, 300), summary_ja=truncate(result.summary_ja, 200), score_reason=truncate(result.reason, 500))
             except (json.JSONDecodeError, ValidationError, ValueError) as exc:
-                LOG.warning("LLM出力が不正のため候補をスキップしました: %s", type(exc).__name__)
+                LOG.warning("LLM出力が不正です（最大3巡回まで再試行）: %s", type(exc).__name__)
                 for article in batch:
-                    self.store.update_article(article["id"], state="skipped")
+                    self.store.curation_failed(article["id"])
             except Exception as exc:
-                # 通信失敗は出力不正と違い、次tickで再試行できるよう new のまま残す。
+                # 通信失敗も次tickで再試行する（候補単位で最大3巡回）。
                 # 例外本文には接続先や認証情報が含まれうるため、型だけを記録する。
-                LOG.warning("LLMへの採点要求に失敗しました（次回再試行）: %s", type(exc).__name__)
+                LOG.warning("LLMへの採点要求に失敗しました（最大3巡回まで再試行）: %s", type(exc).__name__)
+                for article in batch:
+                    self.store.curation_failed(article["id"])

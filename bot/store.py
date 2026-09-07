@@ -4,7 +4,7 @@
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
 import sqlite3
@@ -46,7 +46,14 @@ class Store:
         CREATE TABLE IF NOT EXISTS source_cache (
           source_id TEXT PRIMARY KEY, etag TEXT, last_modified TEXT
         );
+        CREATE TABLE IF NOT EXISTS delivery_slots (
+          day TEXT NOT NULL, kind TEXT NOT NULL, status TEXT NOT NULL,
+          PRIMARY KEY(day, kind)
+        );
         """)
+        columns = {row[1] for row in self.conn.execute("PRAGMA table_info(articles)")}
+        if "curation_attempts" not in columns:
+            self.conn.execute("ALTER TABLE articles ADD COLUMN curation_attempts INTEGER NOT NULL DEFAULT 0")
         self.conn.commit()
 
     def is_empty(self) -> bool:
@@ -77,7 +84,7 @@ class Store:
         cur = self.conn.execute("""INSERT INTO articles
           (url,title,source_id,source_category,published_at,first_seen_at,summary,state)
           VALUES (?,?,?,?,?,?,?,?)""", (url, title, article["source_id"], article["source_category"],
-           article.get("published_at"), article.get("first_seen_at") or datetime.now().isoformat(), article.get("summary", ""), state))
+           article.get("published_at"), article.get("first_seen_at") or datetime.now(timezone.utc).isoformat(), article.get("summary", ""), state))
         self.conn.commit()
         return int(cur.lastrowid)
 
@@ -96,7 +103,7 @@ class Store:
     def update_article(self, article_id: int, **fields: Any) -> None:
         if not fields:
             return
-        allowed = {"score", "score_reason", "headline_ja", "summary_ja", "breaking", "state", "message_id"}
+        allowed = {"score", "score_reason", "headline_ja", "summary_ja", "breaking", "state", "message_id", "curation_attempts"}
         unknown = set(fields) - allowed
         if unknown:
             raise ValueError(f"更新できない項目です: {unknown}")
@@ -143,3 +150,23 @@ class Store:
 
     def close(self) -> None:
         self.conn.close()
+
+    def reserve_delivery(self, day: str, kind: str) -> bool:
+        """送信前に日次枠を永続化。クラッシュ・応答不明時も追加送信しない。"""
+        with self.conn:
+            result = self.conn.execute("INSERT OR IGNORE INTO delivery_slots VALUES (?, ?, 'pending')", (day, kind))
+        return result.rowcount == 1
+
+    def finish_delivery(self, day: str, kind: str, *, success: bool, retry_safe: bool) -> None:
+        with self.conn:
+            if not success and retry_safe:
+                self.conn.execute("DELETE FROM delivery_slots WHERE day=? AND kind=?", (day, kind))
+            else:
+                self.conn.execute("UPDATE delivery_slots SET status=? WHERE day=? AND kind=?", ("sent" if success else "uncertain", day, kind))
+
+    def curation_failed(self, article_id: int) -> None:
+        """不正応答・通信失敗を3巡回まで再試行し、失敗候補の永久占有を防ぐ。"""
+        with self.conn:
+            self.conn.execute("""UPDATE articles SET curation_attempts=curation_attempts+1,
+                state=CASE WHEN curation_attempts+1 >= 3 THEN 'skipped' ELSE 'new' END
+                WHERE id=?""", (article_id,))

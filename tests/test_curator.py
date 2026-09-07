@@ -5,7 +5,7 @@ from bot.curator import Curator
 from bot.store import Store
 
 
-def test_invalid_llm_json_is_skipped_without_exception():
+def test_invalid_llm_json_is_retryable_without_exception():
     store = Store()
     article_id = store.add_article({"url": "https://example.com/a", "title": "モデル", "source_id": "x", "source_category": "official"})
     response = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content="not json"))])
@@ -13,7 +13,7 @@ def test_invalid_llm_json_is_skipped_without_exception():
     settings = Settings("x", "https://llm.example", "key", "model")
     curator = Curator(store, settings, client=client)
     curator.curate()
-    assert store.get_article(article_id)["state"] == "skipped"
+    assert store.get_article(article_id)["state"] == "new"
 
 
 def test_stub_truncates_title_and_summary():
