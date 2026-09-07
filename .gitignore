@@ -1,0 +1,18 @@
+# 秘密情報（Webhook URL・APIキーは必ず.envのみに置く。リポジトリはpublic）
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# データ（既読管理DB等）
+data/
+*.sqlite3
+*.db
+
+# OS
+.DS_Store
