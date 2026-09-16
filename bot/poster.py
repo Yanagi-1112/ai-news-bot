@@ -96,9 +96,12 @@ class Poster:
 
     def _send(self, content: str, article_ids: list[int]) -> bool:
         """全投稿先へ同じ紙面を送り、部分成功時も重複を防ぐ。"""
+        webhook_urls = self._active_webhook_urls()
+        if not webhook_urls:
+            # 予約開始前は未配信のまま保持し、開始後の巡回で送る。
+            return False
         for article_id in article_ids:
             self.store.update_article(article_id, state="uncertain")
-        webhook_urls = self._active_webhook_urls()
         message_ids: list[str] = []
         failed_safely = 0
         uncertain = False
@@ -150,8 +153,11 @@ class Poster:
 
     def send_test(self) -> bool:
         """通常記事の状態には触れない固定疎通メッセージ。"""
+        webhook_urls = self._active_webhook_urls()
+        if not webhook_urls:
+            return False
         success = True
-        for webhook_url in self._active_webhook_urls():
+        for webhook_url in webhook_urls:
             try:
                 response = self.client.post(webhook_url + "?wait=true", json=self._payload("[TEST] 接続テストです。この名前とアイコンで配信されます。"), timeout=15.0)
                 success = success and 200 <= response.status_code < 300
