@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 import os
 from typing import Any
@@ -31,6 +32,16 @@ class Settings:
     bot_display_name: str = "未来に先回りする新聞"
     bot_avatar_url: str = "https://raw.githubusercontent.com/Yanagi-1112/ai-news-bot/main/docs/icon.png"
     digest_min_score: int = 60
+    # 既存の投稿先を保ったまま同じ紙面を追加配信する。秘密値なので.envのみ。
+    additional_discord_webhook_urls: tuple[str, ...] = ()
+    additional_webhooks_start_at: datetime | None = None
+
+    @property
+    def discord_webhook_urls(self) -> tuple[str, ...]:
+        """主投稿先を先頭に、重複を除いた全投稿先を返す。"""
+        return tuple(dict.fromkeys(
+            url for url in (self.discord_webhook_url, *self.additional_discord_webhook_urls) if url
+        ))
 
 
 def mask_secret(value: str) -> str:
@@ -49,8 +60,18 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
         hour = int(os.getenv("POST_HOUR_JST", "8"))
         threshold = int(os.getenv("BREAKING_THRESHOLD", "90"))
         digest_min_score = int(os.getenv("DIGEST_MIN_SCORE", "60"))
+        start_at_raw = os.getenv("DISCORD_ADDITIONAL_WEBHOOKS_START_AT", "").strip()
+        additional_start_at = datetime.fromisoformat(start_at_raw) if start_at_raw else None
     except ValueError as exc:
-        raise ValueError("POST_HOUR_JST / BREAKING_THRESHOLD / DIGEST_MIN_SCORE は整数で指定してください") from exc
+        raise ValueError(
+            "数値設定またはDISCORD_ADDITIONAL_WEBHOOKS_START_ATのISO日時が不正です"
+        ) from exc
+    if additional_start_at is not None and additional_start_at.tzinfo is None:
+        raise ValueError("DISCORD_ADDITIONAL_WEBHOOKS_START_ATにはタイムゾーンを指定してください")
+    additional_webhooks = tuple(
+        url.strip() for url in os.getenv("DISCORD_ADDITIONAL_WEBHOOK_URLS", "").split(",")
+        if url.strip()
+    )
     return Settings(
         discord_webhook_url=os.getenv("DISCORD_WEBHOOK_URL", ""),
         llm_base_url=os.getenv("LLM_BASE_URL", ""),
@@ -62,6 +83,8 @@ def load_settings(env_file: str | Path | None = None) -> Settings:
         bot_display_name=os.getenv("BOT_DISPLAY_NAME", Settings.bot_display_name),
         bot_avatar_url=os.getenv("BOT_AVATAR_URL", Settings.bot_avatar_url),
         digest_min_score=digest_min_score,
+        additional_discord_webhook_urls=additional_webhooks,
+        additional_webhooks_start_at=additional_start_at,
     )
 
 
@@ -91,7 +114,7 @@ def validate_config() -> list[str]:
     """通信せず、必要な設定と同梱ファイルだけを検査する。"""
     settings = load_settings()
     errors: list[str] = []
-    if not settings.discord_webhook_url:
+    if not settings.discord_webhook_urls:
         errors.append("DISCORD_WEBHOOK_URL が未設定です")
     if not all((settings.llm_base_url, settings.llm_api_key, settings.llm_model)):
         errors.append("LLM_BASE_URL / LLM_API_KEY / LLM_MODEL をすべて設定してください")
