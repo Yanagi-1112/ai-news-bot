@@ -22,8 +22,14 @@ def build_runtime(*, memory: bool = False):
         store.mark_initialized()
     collector = Collector(store)
     curator = Curator(store, settings)
-    poster = Poster(store, settings.discord_webhook_url,
-                    username=settings.bot_display_name, avatar_url=settings.bot_avatar_url)
+    poster = Poster(
+        store,
+        settings.discord_webhook_url,
+        username=settings.bot_display_name,
+        avatar_url=settings.bot_avatar_url,
+        additional_webhook_urls=settings.additional_discord_webhook_urls,
+        additional_start_at=settings.additional_webhooks_start_at,
+    )
     return NewsScheduler(store, collector, curator, poster, settings, load_sources())
 
 
