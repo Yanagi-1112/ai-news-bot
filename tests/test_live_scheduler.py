@@ -1,7 +1,8 @@
 """Exercise the real scheduler executor, without network or Discord writes."""
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 
-from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
+from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED, EVENT_JOB_SUBMITTED
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 from bot.config import Settings
@@ -13,12 +14,30 @@ def test_serve_scheduled_tick_can_access_persistent_database(tmp_path, monkeypat
     events = []
     triggers = []
     engine = BlockingScheduler(timezone=JST)
+    # A completed Future may run its callback synchronously in the scheduler's
+    # submitting thread. Exercise that legal ordering with a real worker thread,
+    # so the test cannot depend on a lucky race between submit() and add_done_callback().
+    real_submit = ThreadPoolExecutor.submit
+
+    def finish_before_callback(self, function, *args, **kwargs):
+        future = real_submit(self, function, *args, **kwargs)
+        future.result(timeout=5)
+        return future
+
+    monkeypatch.setattr(ThreadPoolExecutor, 'submit', finish_before_callback)
 
     def completed(event):
         events.append(event)
-        engine.shutdown(wait=False)
+
+    def submitted(_event):
+        # Submission is announced after the scheduler updates its job store.
+        # Stopping from the completion callback can clear that store before its
+        # update when a Future finishes before add_done_callback(). Wait for the
+        # actual worker here so all completion assertions remain meaningful.
+        engine.shutdown(wait=True)
 
     engine.add_listener(completed, EVENT_JOB_ERROR | EVENT_JOB_EXECUTED)
+    engine.add_listener(submitted, EVENT_JOB_SUBMITTED)
     real_add_job = engine.add_job
 
     def run_immediately(*args, **kwargs):
