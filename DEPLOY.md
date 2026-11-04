@@ -11,6 +11,11 @@ git checkout "$(git tag --sort=-version:refname | head -n 1)"   # 最新リリ�
 
 セットアップ中にWebhook URLとLLMキーを入力します。入力値は `.env` にだけ保存されます。起動後は `./manage.sh status` で稼働状態を確認し、必要なら `./manage.sh logs` でログを見ます。テスト投稿はセットアップ時、または `docker compose exec newsbot python -m bot.main --send-test` で確認できます。
 
+複数チャンネルへ同じ紙面を配信する場合は、主投稿先の `DISCORD_WEBHOOK_URL` はそのままにし、
+追加先を `DISCORD_ADDITIONAL_WEBHOOK_URLS` へカンマ区切りで設定して再起動します。
+開始日時を予約する場合は `DISCORD_ADDITIONAL_WEBHOOKS_START_AT` にタイムゾーン付きISO日時を指定します。
+部分成功やタイムアウトでは重複防止を優先して自動再送を止めるため、ログとDiscord実投稿を照合してください。
+
 ## 日常運用
 
 `DIGEST_MIN_SCORE`（既定60）未満の記事はダイジェストに載せません。速報は公式情報源・`breaking=true`・`BREAKING_THRESHOLD`以上の候補のみ。公開日が取得できる記事は公開日、それ以外は初回取得日で48時間の鮮度を確認します。巡回はJST毎時00分・30分、ダイジェストは8時の巡回から処理します。

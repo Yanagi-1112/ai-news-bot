@@ -1,4 +1,5 @@
 import httpx
+from datetime import datetime, timezone
 
 from bot.poster import Poster, build_digest
 from bot.store import Store
@@ -82,3 +83,78 @@ def test_payload_includes_display_name_and_avatar():
         assert payload["username"] == "未来に先回りする新聞"
         assert payload["avatar_url"] == "https://example.com/icon.png"
         assert payload["allowed_mentions"] == {"parse": []}
+
+
+def test_fanout_sends_identical_payload_and_records_all_message_ids():
+    import json
+
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(200, json={"id": f"message-{len(seen)}"})
+
+    store = Store()
+    item = make_article(store)
+    poster = Poster(
+        store,
+        ["https://discord.example/first", "https://discord.example/second"],
+        httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    assert poster.send_breaking(item)
+    assert len(seen) == 2
+    assert json.loads(seen[0].content) == json.loads(seen[1].content)
+    saved = store.get_article(item["id"])
+    assert saved["state"] == "sent"
+    assert saved["message_id"] == "message-1,message-2"
+
+
+def test_fanout_partial_success_is_uncertain_and_not_retryable():
+    calls = 0
+
+    def handler(request):
+        nonlocal calls
+        calls += 1
+        return httpx.Response(200, json={"id": "delivered"}) if calls == 1 else httpx.Response(500)
+
+    store = Store()
+    item = make_article(store)
+    poster = Poster(
+        store,
+        ["https://discord.example/first", "https://discord.example/second"],
+        httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+    assert not poster.send_breaking(item)
+    assert store.get_article(item["id"])["state"] == "uncertain"
+
+
+def test_fanout_all_clear_failures_are_retryable():
+    store = Store()
+    item = make_article(store)
+    poster = Poster(
+        store,
+        ["https://discord.example/first", "https://discord.example/second"],
+        client_with(500),
+    )
+    assert not poster.send_breaking(item)
+    assert store.get_article(item["id"])["state"] == "scored"
+
+
+def test_additional_webhook_waits_until_start_time():
+    store = Store()
+    start_at = datetime(2026, 9, 17, 8, tzinfo=timezone.utc)
+    poster = Poster(
+        store,
+        "https://discord.example/primary",
+        client_with(200),
+        additional_webhook_urls=["https://discord.example/additional"],
+        additional_start_at=start_at,
+    )
+
+    assert poster._active_webhook_urls(datetime(2026, 9, 17, 7, 59, tzinfo=timezone.utc)) == (
+        "https://discord.example/primary",
+    )
+    assert poster._active_webhook_urls(start_at) == (
+        "https://discord.example/primary",
+        "https://discord.example/additional",
+    )
